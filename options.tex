@@ -1,0 +1,84 @@
+./load_gen {OPTIONS}
+
+    workload_gen_parser
+
+  OPTIONS:
+
+      This group is all exclusive:
+        -I[I], --insert=[I]               Number of inserts [def: 1]
+        -U[U], --update=[U]               Number of updates [def: 0]
+        -D[D], --point_delete=[D]         Number of point deletes [def: 0]
+        -R[R], --range_delete=[R]         Number of range deletes [def: 0]
+        -y[y],
+        --range_delete_selectivity=[y]    Range delete selectivity [def: 0]
+        -Q[Q], --point_query=[Q]          Number of point queries [def: 0]
+        -S[S], --range_query=[S]          Number of range queries [def: 0]
+        -Y[Y],
+        --range_query_selectivity=[Y]     Range query selectivity [def: 0]
+        -z[z],
+        --zero_result_point_delete_proportion=[z]
+                                          Proportion of zero-result point
+                                          deletes [def: 0]
+        -Z[Z],
+        --zero_result_point_lookup_proportion=[Z]
+                                          Proportion of zero-result point
+                                          lookups [def: 0]
+        --unique_zero_result_point_lookup_proportion=[UZ],
+        --UZ=[UZ]                         Proportion of maximum unique
+                                          zero-result point lookups [def: 0.5]
+        --maximum_unique_existing_point_lookup_proportion=[UE],
+        --UE=[UE]                         Proportion of maximum unique exising
+                                          point lookups [def: 0.5]
+        -E[E], --entry_size=[E]           Entry size (in bytes) [def: 8]
+        -L[L], --lambda=[L]               lambda = key_size / (key_size +
+                                          value_size) [def: 0.5]
+        --preloading, --PL                preload from workload.txt
+        --output-path=[OP], --OP=[OP]     output path [def: 0]
+        --insert_distribution=[ID],
+        --ID=[ID]                         Insert Distribution [0: uniform,
+                                          1:normal, 2:beta, def: 0]
+        --insert_distribution_norm_mean_percentile=[ID_Norm_Mean_Percentile],
+        --ID_NMP=[ID_Norm_Mean_Percentile]
+                                          , def: 0.5]
+        --insert_distribution_norm_standard_deviation=[ID_Norm_Stddev],
+        --ID_NDEV=[ID_Norm_Stddev]        , def: 1]
+        --insert_distribution_beta_alpha=[ID_Beta_Alpha],
+        --ID_BALPHA=[ID_Beta_Alpha]       , def: 1.0]
+        --insert_distribution_beta_beta=[ID_Beta_Beta],
+        --ID_BBETA=[ID_Beta_Beta]         , def: 1.0]
+        --update_distribution=[UD],
+        --UD=[UD]                         Update Distribution [0: uniform,
+                                          1:normal, 2:beta, def: 0]
+        --update_distribution_norm_mean_percentile=[UD_Norm_Mean_Percentile],
+        --UD_NMP=[UD_Norm_Mean_Percentile]
+                                          , def: 0.5]
+        --update_distribution_norm_standard_deviation=[UD_Norm_Stddev],
+        --UD_NDEV=[UD_Norm_Stddev]        , def: 1]
+        --update_distribution_beta_alpha=[UD_Beta_Alpha],
+        --UD_BALPHA=[UD_Beta_Alpha]       , def: 1.0]
+        --update_distribution_beta_beta=[UD_Beta_Beta],
+        --UD_BBETA=[UD_Beta_Beta]         , def: 1.0]
+        --existing_point_lookup_distribution=[ED],
+        --ED=[ED]                         Existing Point Lookup Distribution [0:
+                                          uniform, 1:normal, 2:beta, def: 0]
+        --existing_point_lookup_distribution_norm_mean_percentile=[ED_Norm_Mean_Percentile],
+        --ED_NMP=[ED_Norm_Mean_Percentile]
+                                          , def: 0.5]
+        --existing_point_lookup_distribution_norm_standard_deviation=[ED_Norm_Stddev],
+        --ED_NDEV=[ED_Norm_Stddev]        , def: 1]
+        --existing_point_lookup_distribution_beta_alpha=[ED_Beta_Alpha],
+        --ED_BALPHA=[ED_Beta_Alpha]       , def: 1.0]
+        --existing_point_lookup_distribution_beta_beta=[ED_Beta_Beta],
+        --ED_BBETA=[ED_Beta_Beta]         , def: 1.0]
+        --non_existing_point_lookup_distribution=[ZD],
+        --ZD=[ZD]                         Zero-result Point Lookup Distribution
+                                          [0: uniform, 1:normal, 2:beta, def: 0]
+        --non_existing_point_lookup_distribution_norm_mean_percentile=[ZD_Norm_Mean_Percentile],
+        --ZD_NMP=[ZD_Norm_Mean_Percentile]
+                                          , def: 0.5]
+        --non_existing_point_lookup_distribution_norm_standard_deviation=[ZD_Norm_Stddev],
+        --ZD_NDEV=[ZD_Norm_Stddev]        , def: 1]
+        --non_existing_point_lookup_distribution_beta_alpha=[ZD_Beta_Alpha],
+        --ZD_BALPHA=[ZD_Beta_Alpha]       , def: 1.0]
+        --non_existing_point_lookup_distribution_beta_beta=[ZD_Beta_Beta],
+        --ZD_BBETA=[ZD_Beta_Beta]         , def: 1.0]
