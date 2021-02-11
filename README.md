@@ -1,6 +1,6 @@
 # K-V-Workload-Generator
 
-Run `make` and you will have an executable file 'load_gen' which receives the following parameters:
+This repository maintains a key-value workload generator that supports different distributions (uniform, normal and zipfian) with customized parameters for inserts, updates and point queries. Other parameters such as zero-result point lookup ratio, range lookup selectivty can be also specified. Run `make` and you will have an executable file 'load_gen' which receives the following parameters:
 
   ./load_gen {OPTIONS}
 
