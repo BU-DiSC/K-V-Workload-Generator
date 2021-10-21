@@ -890,7 +890,7 @@ int parse_arguments2(int argc, char *argv[]) {
         std::cerr << "\033[0;31m Error: \033[0m The proportion of zero-result point lookups should be set between 0 and 1" << std::endl;
 	return 1;
   }
-  entry_size = entry_size_cmd ? args::get(entry_size_cmd) : 0;
+  entry_size = entry_size_cmd ? args::get(entry_size_cmd) : 8;
 
   non_existing_point_query_count = floor(point_query_count*zero_result_point_lookup_proportion);
   //std::cout << "Zero-result queries:" << non_existing_point_query_count << std::endl;
