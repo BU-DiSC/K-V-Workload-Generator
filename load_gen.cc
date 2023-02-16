@@ -831,7 +831,7 @@ int parse_arguments2(int argc, char *argv[]) {
   args::Group group5(parser, "Optional less frequent switches and parameters:", args::Group::Validators::DontCare);
 */
 
-  args::ValueFlag<long> insert_cmd(group1, "I", "Number of inserts [def: 1]", {'I', "insert"});
+  args::ValueFlag<long> insert_cmd(group1, "I", "Number of inserts [def: 0]", {'I', "insert"});
   args::ValueFlag<long> update_cmd(group1, "U", "Number of updates [def: 0]", {'U', "update"});
   args::ValueFlag<long> point_delete_cmd(group1, "D", "Number of point deletes [def: 0]", {'D', "point_delete"});
   args::ValueFlag<long> range_delete_cmd(group1, "R", "Number of range deletes [def: 0]", {'R', "range_delete"});
