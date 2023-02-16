@@ -287,6 +287,11 @@ void generate_workload() {
     if(STRING_KEY_ENABLED) scaling_ratio = num_char;
     nonExistingPointLookupIndexGenerator = new Generator(non_existing_point_lookup_dist, 0, global_non_existing_key_pool.size() - 1, non_existing_point_lookup_norm_mean_percentile*global_non_existing_key_pool.size(), non_existing_point_lookup_norm_stddev*global_non_existing_key_pool.size()/scaling_ratio, non_existing_point_lookup_beta_alpha, non_existing_point_lookup_beta_beta, non_existing_point_lookup_zipf_alpha, global_non_existing_key_pool.size());
 
+     std::vector<int> update_global_index_mapping;
+     if (update_count > 0) {
+         updateIndexGenerator = new Generator(update_dist, 0, global_insert_pool.size() - 1, update_norm_mean_percentile*global_insert_pool.size(), update_norm_stddev*global_insert_pool.size()/scaling_ratio, update_beta_alpha, update_beta_beta, update_zipf_alpha, global_insert_pool.size(), update_global_index_mapping);
+     }
+
     while (_total_operation_count < total_operation_count) {
         int choice = get_choice(insert_pool.size(), insert_count, update_count, point_delete_count, range_delete_count, point_query_count, range_query_count, _insert_count, _update_count, _point_delete_count, _range_delete_count, _point_query_count, _range_query_count);
         // std::cout << "choice = " << choice << std::endl;
@@ -323,35 +328,53 @@ void generate_workload() {
             std::vector<int> index_mapping;
             if(!sorted){
                 if(existing_point_lookup_dist == 1){
+		    std::cout << "sort here" << std::endl;
                     sort(insert_pool.begin(), insert_pool.end());
                     double scaling_ratio = 1.0;
                     sorted = true;
                 
                     if(STRING_KEY_ENABLED) 
                         scaling_ratio = num_char;
+
+                    if(updateIndexGenerator != nullptr){
+			std::cout << "renew update generator" << std::endl;
+                    	index_mapping = updateIndexGenerator->index_mapping;
+                    	delete updateIndexGenerator;
+         	    	updateIndexGenerator = new Generator(update_dist, 0, global_insert_pool.size() - 1, update_norm_mean_percentile*global_insert_pool.size(), update_norm_stddev*global_insert_pool.size()/scaling_ratio, update_beta_alpha, update_beta_beta, update_zipf_alpha, global_insert_pool.size(), update_global_index_mapping);
+                     }
                 }
                 
+               	 
                 
-                if(updateIndexGenerator != nullptr){
-                    index_mapping = updateIndexGenerator->index_mapping;
-                    delete updateIndexGenerator;
-                    updateIndexGenerator = nullptr;
-                }
             }
 
-            if(updateIndexGenerator == nullptr){
-                updateIndexGenerator = new Generator(update_dist, 0, insert_pool.size() - 1, update_norm_mean_percentile*insert_pool.size(), update_norm_stddev*insert_pool.size()/scaling_ratio, update_beta_alpha, update_beta_beta, update_zipf_alpha, insert_pool.size(), index_mapping);
-            }
 
-            long insert_pool_size = insert_pool.size();
             long index = updateIndexGenerator->getNext();
-            Key key = insert_pool[index];
-            // std::cout << key << std::endl;
-            Key value = get_value(entry_size - key_size);
-            // std::cout << value << std::endl;
-            // std::cout << "U " << key << " " << value << std::endl;
-            fp << "U " << key << " " << value << std::endl;
-            _update_count++;
+	    if (index >= insert_pool.size()) { // Generate an insert instead here
+		Key key = global_insert_pool[index];
+            	global_insert_pool[index] = global_insert_pool[_insert_count];
+            	global_insert_pool[_insert_count] = key;
+                Key value = get_value(entry_size - key_size);
+		if(sorted) {
+                	std::vector<Key>::iterator it = std::upper_bound(insert_pool.begin(), insert_pool.end(), key);
+                	insert_pool.insert(it, key);
+            	} else {
+                	insert_pool.push_back(key);
+            	}
+		global_insert_pool_set.insert(key);
+                fp << "I " << key << " " << value << std::endl;
+                _insert_count++;
+                _effective_ingestion_count++;
+	    } else {
+		Key key = insert_pool[index];
+            	// std::cout << key << std::endl;
+            	Key value = get_value(entry_size - key_size);
+            	// std::cout << value << std::endl;
+            	// std::cout << "U " << key << " " << value << std::endl;
+            	fp << "U " << key << " " << value << std::endl;
+            	_update_count++;
+	    }
+            
             _total_operation_count++;
         }
 
@@ -369,13 +392,13 @@ void generate_workload() {
                 global_insert_pool_set.erase(key);
                 insert_pool.erase(insert_pool.begin() + index);
 	        std::vector<int> index_mapping;
-                if(updateIndexGenerator != nullptr){
+                if(updateIndexGenerator != nullptr && update_count > 0){
 		    index_mapping = updateIndexGenerator->index_mapping;
                     delete updateIndexGenerator;
-                    updateIndexGenerator = new Generator(update_dist, 0, insert_pool.size() - 1, update_norm_mean_percentile*insert_pool.size(), update_norm_stddev*insert_pool.size()/scaling_ratio, update_beta_alpha, update_beta_beta, update_zipf_alpha, insert_pool.size(), index_mapping);
+         	    updateIndexGenerator = new Generator(update_dist, 0, global_insert_pool.size() - 1, update_norm_mean_percentile*global_insert_pool.size(), update_norm_stddev*global_insert_pool.size()/scaling_ratio, update_beta_alpha, update_beta_beta, update_zipf_alpha, global_insert_pool.size(), update_global_index_mapping);
                 }
 		index_mapping.clear();
-                if(existingPointLookupIndexGenerator != nullptr){
+                if(existingPointLookupIndexGenerator != nullptr && point_query_count > 0){
 		    index_mapping = existingPointLookupIndexGenerator->index_mapping;
 
                     delete existingPointLookupIndexGenerator;

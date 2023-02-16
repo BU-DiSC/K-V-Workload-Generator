@@ -16,16 +16,19 @@ class Generator{
 	double beta_beta_;	
         double zipf_alpha_;
         int zipf_size_;
+	double zipf_searching_threshold_;
         double zipf_normalize_constant;
 	std::default_random_engine gen;
 	std::uniform_int_distribution<int> distribution0;
 	std::normal_distribution<double> distribution1;
 	std::gamma_distribution<double> distribution2_x;
 	std::gamma_distribution<double> distribution2_y;
+	std::uniform_int_distribution<int> distribution3;
 
         // for zipf distribution
 	std::uniform_real_distribution<double> uniform_standard_distribution; 
         std::vector<double> cumulative_probabilities;
+	std::vector<uint32_t> zipf_generator_small_area;
 	
 public:
         std::vector<int> index_mapping; 
