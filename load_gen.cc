@@ -22,9 +22,9 @@
 #define U_THRESHOLD 0.1 // U_THRESHOLD*insert_count number of inserts must be made before Updates may take place (applicable when an empty database is being populated)
 #define PD_THRESHOLD 0.1 // PD_THRESHOLD*insert_count number of inserts must be made before Point Deletes may take place (applicable when an empty database is being populated)
 #define RD_THRESHOLD 0.75 // RD_THRESHOLD*insert_count number of inserts must be made before Range Deletes may take place (applicable when an empty database is being populated)
-#define PQ_THRESHOLD 0.1 // PQ_THRESHOLD*insert_count number of inserts must be made before Point Queries may take place (applicable when an empty database is being populated)
+#define PQ_THRESHOLD 0.4 // PQ_THRESHOLD*insert_count number of inserts must be made before Point Queries may take place (applicable when an empty database is being populated)
 #define RQ_THRESHOLD 0.1 // RQ_THRESHOLD*insert_count number of inserts must be made before Range Queries may take place (applicable when an empty database is being populated)
-#define STRING_KEY_ENABLED false
+#define STRING_KEY_ENABLED true
 #define FILENAME "workload.txt"
 
 // using namespace std;
@@ -115,11 +115,10 @@ Key get_key(int _key_size){
 
 std::string get_value(int _value_size) {
     // std::cout << key_size << std::endl;
-    char *s = new char[(int)_value_size];
+    std::string s = std::string((int)_value_size, ' ');
     for (int i = 0; i < _value_size; ++i) {
         s[i] = value_alphanum[rand() % (sizeof(value_alphanum) - 1)];
     }
-    s[_value_size] = '\0';
     return s;
 }
 
@@ -282,7 +281,7 @@ void generate_workload() {
         _maximum_unique_non_existing_point_query_count++;
     }
     tmp_insert_pool_set.clear();
-    sort(global_non_existing_key_pool.begin(), global_non_existing_key_pool.end()); 
+    //sort(global_non_existing_key_pool.begin(), global_non_existing_key_pool.end()); 
     double scaling_ratio = 1.0;
     if(STRING_KEY_ENABLED) scaling_ratio = num_char;
     nonExistingPointLookupIndexGenerator = new Generator(non_existing_point_lookup_dist, 0, global_non_existing_key_pool.size() - 1, non_existing_point_lookup_norm_mean_percentile*global_non_existing_key_pool.size(), non_existing_point_lookup_norm_stddev*global_non_existing_key_pool.size()/scaling_ratio, non_existing_point_lookup_beta_alpha, non_existing_point_lookup_beta_beta, non_existing_point_lookup_zipf_alpha, global_non_existing_key_pool.size());
@@ -291,6 +290,8 @@ void generate_workload() {
      if (update_count > 0) {
          updateIndexGenerator = new Generator(update_dist, 0, global_insert_pool.size() - 1, update_norm_mean_percentile*global_insert_pool.size(), update_norm_stddev*global_insert_pool.size()/scaling_ratio, update_beta_alpha, update_beta_beta, update_zipf_alpha, global_insert_pool.size(), update_global_index_mapping);
      }
+
+    bool update_renew_flag = false;
 
     while (_total_operation_count < total_operation_count) {
         int choice = get_choice(insert_pool.size(), insert_count, update_count, point_delete_count, range_delete_count, point_query_count, range_query_count, _insert_count, _update_count, _point_delete_count, _range_delete_count, _point_query_count, _range_query_count);
@@ -336,19 +337,21 @@ void generate_workload() {
                     if(STRING_KEY_ENABLED) 
                         scaling_ratio = num_char;
 
-                    if(updateIndexGenerator != nullptr){
-			std::cout << "renew update generator" << std::endl;
-                    	index_mapping = updateIndexGenerator->index_mapping;
-                    	delete updateIndexGenerator;
-         	    	updateIndexGenerator = new Generator(update_dist, 0, global_insert_pool.size() - 1, update_norm_mean_percentile*global_insert_pool.size(), update_norm_stddev*global_insert_pool.size()/scaling_ratio, update_beta_alpha, update_beta_beta, update_zipf_alpha, global_insert_pool.size(), update_global_index_mapping);
-                     }
-                }
-                
-               	 
-                
+		    update_renew_flag = true;
+                    
+                } 
             }
 
 
+	    if (update_renew_flag) {
+	        if(updateIndexGenerator != nullptr){
+			//std::cout << "renew update generator" << std::endl;
+                    	index_mapping = updateIndexGenerator->index_mapping;
+                    	delete updateIndexGenerator;
+         	    	updateIndexGenerator = new Generator(update_dist, 0, global_insert_pool.size() - 1, update_norm_mean_percentile*global_insert_pool.size(), update_norm_stddev*global_insert_pool.size()/scaling_ratio, update_beta_alpha, update_beta_beta, update_zipf_alpha, global_insert_pool.size(), update_global_index_mapping);
+			update_renew_flag = false;
+                }
+	    }
             long index = updateIndexGenerator->getNext();
 	    if (index >= insert_pool.size()) { // Generate an insert instead here
 		Key key = global_insert_pool[index];
@@ -392,12 +395,9 @@ void generate_workload() {
                 global_insert_pool_set.erase(key);
                 insert_pool.erase(insert_pool.begin() + index);
 	        std::vector<int> index_mapping;
-                if(updateIndexGenerator != nullptr && update_count > 0){
-		    index_mapping = updateIndexGenerator->index_mapping;
-                    delete updateIndexGenerator;
-         	    updateIndexGenerator = new Generator(update_dist, 0, global_insert_pool.size() - 1, update_norm_mean_percentile*global_insert_pool.size(), update_norm_stddev*global_insert_pool.size()/scaling_ratio, update_beta_alpha, update_beta_beta, update_zipf_alpha, global_insert_pool.size(), update_global_index_mapping);
+                if(updateIndexGenerator != nullptr && update_count > 0 && !update_renew_flag){
+		    update_renew_flag = true;
                 }
-		index_mapping.clear();
                 if(existingPointLookupIndexGenerator != nullptr && point_query_count > 0){
 		    index_mapping = existingPointLookupIndexGenerator->index_mapping;
 
@@ -941,6 +941,12 @@ int parse_arguments2(int argc, char *argv[]) {
   out_filename = out_filename_cmd ? args::get(out_filename_cmd) : "";
 
 
+  if (insert_count == 0 && !load_from_existing_workload) {
+    if (update_count > 0 || existing_point_query_count > 0 || point_delete_count > 0 || range_delete_count > 0) {
+	std::cerr << "\033[0;31m ERROR:\033[0m Insert cannot be 0 for requested operations" << std::endl;
+	return 1;
+    }
+  }
    // distribution
    insert_dist = insert_dist_cmd ? args::get(insert_dist_cmd):0;
    insert_norm_mean_percentile = insert_dist_norm_mean_percentile_cmd ? args::get(insert_dist_norm_mean_percentile_cmd):0.5;

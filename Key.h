@@ -12,12 +12,14 @@ using namespace std;
 class Key{
 	bool string_enabled_;	
 public:
+	bool empty_flag_;
 	string key_str_;
 	uint32_t key_int32_;	
 	static const char key_alphanum[]; 
 	Key();
 	Key(string key);
 	Key(uint32_t key);
+	void SetEmpty();
 	bool operator <(const Key & t) const;
 	Key operator +(const Key & t);
 	friend ostream & operator <<(ostream & os, const Key& t);

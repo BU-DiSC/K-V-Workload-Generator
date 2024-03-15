@@ -4,17 +4,24 @@
 const char Key::key_alphanum[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
 Key::Key(){
   string_enabled_ = true;
+  empty_flag_ = true;
   key_str_ = "";
 }
 
 Key::Key(string key){
   key_str_ = key;
   string_enabled_ = true;
+  empty_flag_ = false;
 }
 
 Key::Key(uint32_t key){
   key_int32_ = key;
   string_enabled_ = false;
+  empty_flag_ = true;
+}
+
+void Key::SetEmpty() {
+  empty_flag_ = true;
 }
 
 bool Key::operator < (const Key & t) const {
@@ -36,12 +43,11 @@ Key Key::operator +(const Key & t){
 
 Key Key::get_key(int _key_size, bool string_enabled){
   if(string_enabled){
-    char *s = new char[(int)_key_size];
+    std::string s = std::string(_key_size, ' ');
     for (int i = 0; i < _key_size; ++i) {
         s[i] = key_alphanum[rand() % (sizeof(key_alphanum) - 1)];
     }
-    s[_key_size] = '\0';
-    return Key(string(s));
+    return Key(s);
 
   } else{
     // here key_size means bits in fact  
