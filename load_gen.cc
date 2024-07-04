@@ -163,13 +163,17 @@ void generate_workload() {
         }
         fin.close();
     }
+    if (insert_count + insert_pool.size() == 0) {
+        std::cerr << "\033[0;31m ERROR:\033[0m Inserts or a non-empty preloaded workload must be specified to populate queries, updates, and deletes." << std::endl;
+	exit(0);
+    }
+    std::cout << point_delete_count + range_delete_count * range_delete_selectivity * insert_count << std::endl;
     if (insert_count + insert_pool.size() < point_delete_count + range_delete_count * range_delete_selectivity * insert_count) {
         std::cout << "\033[1;31m ERROR:\033[0m insert_count < point_delete_count + range_delete_count * range_delete_selectivity * insert_count" << std::endl;
         exit(0);
     }
     std::ofstream fp;
     if(out_filename.compare("") == 0){
-
         fp.open(file_path+FILENAME);
     //   std::cout << "WL_GEN :: output file = " << file_path << FILENAME << std::endl;
     }
@@ -225,39 +229,6 @@ void generate_workload() {
         tmp_insert_pool_set.insert(key);
         global_insert_pool.push_back(key);
 	_insert_count++;
-//=======
-//    if(STRING_KEY_ENABLED) {
-//        insertIndexGenerator = new Generator(insert_dist, 0, num_char*num_char-1, insert_norm_mean_percentile*num_char*num_char, insert_norm_stddev*num_char, insert_beta_alpha, insert_beta_beta, insert_zipf_alpha, num_char*num_char);
-//    }
-//    else {
-//        uint32_t int32_preserved_insert_domain_size = pow(2, num_preserved_bits);
-//        insertIndexGenerator = new Generator(insert_dist, 0, int32_preserved_insert_domain_size-1, insert_norm_mean_percentile*int32_preserved_insert_domain_size, insert_norm_stddev*int32_preserved_insert_domain_size, insert_beta_alpha, insert_beta_beta, insert_zipf_alpha, int32_preserved_insert_domain_size);
-//    }
-//    char prefix[] = "00";
-//    
-//    while(_insert_count < insert_count) {
-//        Key key;	
-//        Key key_suffix;
-//        // std::cout << key << std::endl;
-//        do {
-//            uint32_t index = insertIndexGenerator->getNext();
-//            if (STRING_KEY_ENABLED) {
-//                key_suffix = Key::get_key(key_size - 2, STRING_KEY_ENABLED);
-//                prefix[0] = Key::key_alphanum[(index/62)%62];
-//                prefix[1] = Key::key_alphanum[index%62];
-//                key = Key(prefix);
-//                key = key + key_suffix;
-//            }
-//            else {
-//                key_suffix = Key::get_key(32 - num_preserved_bits, STRING_KEY_ENABLED);
-//                index <<= (32 - num_preserved_bits);
-//                key = Key(key_suffix.key_int32_ | index);
-//            }
-//        } while(tmp_insert_pool_set.find(key) != tmp_insert_pool_set.end());
-//        tmp_insert_pool_set.insert(key);
-//        global_insert_pool.push_back(key);
-//        _insert_count++;
-//>>>>>>> 084785aa2e580ba6a054ed624ad772a6ba060ff9
     }
     _insert_count = 0;
     sort(tmp_insert_pool_vec.begin(), tmp_insert_pool_vec.end()); 
@@ -938,7 +909,15 @@ int parse_arguments2(int argc, char *argv[]) {
   }
 
   load_from_existing_workload = load_from_existing_workload_cmd ? true : false;
+  if (insert_count == 0 && !load_from_existing_workload) {
+        std::cerr << "\033[0;31m ERROR:\033[0m Inserts or a non-empty preloaded workload must be specified to populate queries, updates, and deletes." << std::endl;
+	return 1;
+  }
   out_filename = out_filename_cmd ? args::get(out_filename_cmd) : "";
+  if (load_from_existing_workload && (out_filename.empty() || out_filename.compare("workload.txt") == 0)) {
+        std::cerr << "\033[0;31m ERROR:\033[0m The output file cannot be empty or 'workload.txt' when preloading is specified." << std::endl;
+	return 1;
+  }
 
 
   if (insert_count == 0 && !load_from_existing_workload) {
