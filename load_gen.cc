@@ -92,7 +92,7 @@ float existing_point_lookup_zipf_alpha = 1.0;
 Generator* existingPointLookupIndexGenerator = nullptr;
 
 int parse_arguments2(int argc, char *argv[]);
-int get_choice(long, long, long, long, long, long, long, long, long, long, long, long, long);
+int get_choice(long, long, long, long, long, long, long, long, long, long, long, long, long, double, double);
 void generate_workload();
 void print_workload_parameters(int _insert_count, int _update_count, int _point_delete_count,int  _range_delete_count,int _effective_ingestion_count);
 std::string get_value(int _value_size);
@@ -167,7 +167,6 @@ void generate_workload() {
         std::cerr << "\033[0;31m ERROR:\033[0m Inserts or a non-empty preloaded workload must be specified to populate queries, updates, and deletes." << std::endl;
 	exit(0);
     }
-    std::cout << point_delete_count + range_delete_count * range_delete_selectivity * insert_count << std::endl;
     if (insert_count + insert_pool.size() < point_delete_count + range_delete_count * range_delete_selectivity * insert_count) {
         std::cout << "\033[1;31m ERROR:\033[0m insert_count < point_delete_count + range_delete_count * range_delete_selectivity * insert_count" << std::endl;
         exit(0);
@@ -265,7 +264,7 @@ void generate_workload() {
     bool update_renew_flag = false;
 
     while (_total_operation_count < total_operation_count) {
-        int choice = get_choice(insert_pool.size(), insert_count, update_count, point_delete_count, range_delete_count, point_query_count, range_query_count, _insert_count, _update_count, _point_delete_count, _range_delete_count, _point_query_count, _range_query_count);
+        int choice = get_choice(insert_pool.size(), insert_count, update_count, point_delete_count, range_delete_count, point_query_count, range_query_count, _insert_count, _update_count, _point_delete_count, _range_delete_count, _point_query_count, _range_query_count, range_query_selectivity, range_delete_selectivity);
         // std::cout << "choice = " << choice << std::endl;
 
         if (choice == 0)
@@ -392,6 +391,42 @@ void generate_workload() {
 
             // for now we use the hardcoded range selectivity 
             long insert_pool_size = insert_pool.size();
+	    Key start_key;
+	    Key end_key;
+	    if (range_delete_selectivity == 0.0 || insert_pool_size == 0) {
+		if (insert_pool_size == 0) {
+		    if(STRING_KEY_ENABLED){
+	        	start_key = get_value(key_size);
+			end_key = get_value(key_size);
+            	    }else{
+	        	start_key = Key::get_key(32, STRING_KEY_ENABLED);
+			end_key = Key::get_key(32, STRING_KEY_ENABLED);
+            	    }
+		} else {
+		    long index = (long)(rand() % (insert_pool_size + 1));
+		    if (index == 0) {
+			start_key = Key::get_key_smaller_than(insert_pool[0]);
+			end_key = Key::get_key_smaller_than(insert_pool[0]);
+		    } else if (index == insert_pool_size) {
+			start_key = Key::get_key_larger_than(insert_pool.back());
+			end_key = Key::get_key_larger_than(insert_pool.back());
+		    } else {
+			start_key = Key::get_key_between(insert_pool[index - 1], insert_pool[index]);
+			end_key = Key::get_key_between(insert_pool[index - 1], insert_pool[index]);
+		    }
+		}
+
+		if (end_key < start_key) {
+		  Key tmp = start_key;
+		  start_key = end_key;
+		  end_key = tmp;
+		}
+		fp << "R " << start_key << " " << end_key << std::endl;
+                _range_delete_count++;
+                _total_operation_count++;
+		continue;
+	    }
+	    
             long entries_in_range_delete = -1;
             if ( (float)range_delete_selectivity * insert_pool_size > 0 && (float)range_delete_selectivity * insert_pool_size < 1 ) // computed on the current size of insert pool 
                 entries_in_range_delete = 1;
@@ -452,10 +487,6 @@ void generate_workload() {
 
         else if (choice == 5) { // POINT QUERY
             // the following if block ensures that all point queries are completed before a database is emptied ( in cases where insert_count == point_delete_count)
-            if (insert_count == point_delete_count && _insert_count == insert_count && _point_delete_count == point_delete_count - 1 && _point_query_count < point_query_count ) {
-                std::cout << "pausing delete to facilitate all remaining point queries ... " << std::endl;
-            }
-            else {
 		float query_type = (float) rand()/RAND_MAX;
 		if(query_type <= zero_result_point_lookup_proportion && _non_existing_point_query_count < non_existing_point_query_count) {
                     Key key = global_non_existing_key_pool[nonExistingPointLookupIndexGenerator->getNext()];
@@ -506,49 +537,53 @@ void generate_workload() {
                 _point_query_count++;
 		_existing_point_query_count++;
                 _total_operation_count++;
-//=======
-//		else if (_existing_point_query_count < existing_point_query_count) {
-//            // std::cout << "_insert_count " << _insert_count << " ; _point_query_count " << _point_query_count << std::endl;
-//            std::vector<int> index_mapping;
-//            if (!sorted) {
-//                sort(insert_pool.begin(), insert_pool.end());
-//                double scaling_ratio = 1.0;
-//                if (STRING_KEY_ENABLED) scaling_ratio = num_char;
-//                sorted = true;
-//                if (existingPointLookupIndexGenerator != nullptr) {
-//                    index_mapping = existingPointLookupIndexGenerator->index_mapping;
-//                    delete existingPointLookupIndexGenerator;
-//                    existingPointLookupIndexGenerator = nullptr;
-//                }
-//            }
-//                    if (existingPointLookupIndexGenerator == nullptr) {
-//                        existingPointLookupIndexGenerator = new Generator(existing_point_lookup_dist, 0, insert_pool.size() - 1, existing_point_lookup_norm_mean_percentile*insert_pool.size(), existing_point_lookup_norm_stddev*insert_pool.size()/scaling_ratio, existing_point_lookup_beta_alpha, existing_point_lookup_beta_beta, existing_point_lookup_zipf_alpha, insert_pool.size(), index_mapping);
-//                    }
-//                    long index = (long)(existingPointLookupIndexGenerator->getNext());
-//                    Key key = insert_pool[index];
-//                    // std::cout << key << std::endl;
-//
-//                    //std::cout << "Q " << key << "\t" << _existing_point_query_count << " < " << existing_point_query_count << std::endl;
-//                    //std::cout << "Q " << key  << std::endl;
-//                    fp << "Q " << key << std::endl;
-//                    _point_query_count++;
-//                    _existing_point_query_count++;
-//                    _total_operation_count++;
-//>>>>>>> 084785aa2e580ba6a054ed624ad772a6ba060ff9
-
 		}
                 
         }
             
-        }
 
         else if (choice == 6) { // RANGE QUERY
+            long insert_pool_size = insert_pool.size();
+	    Key start_key;
+	    Key end_key;
+	    if (range_query_selectivity == 0.0 || insert_pool_size == 0) {
+	       if (insert_pool_size == 0) {
+		    if(STRING_KEY_ENABLED){
+	        	start_key = get_value(key_size);
+			end_key = get_value(key_size);
+            	    }else{
+	        	start_key = Key::get_key(32, STRING_KEY_ENABLED);
+			end_key = Key::get_key(32, STRING_KEY_ENABLED);
+            	    }
+		} else {
+		    long index = (long)(rand() % (insert_pool_size + 1));
+		    if (index == 0) {
+			start_key = Key::get_key_smaller_than(insert_pool[0]);
+			end_key = Key::get_key_smaller_than(insert_pool[0]);
+		    } else if (index == insert_pool_size) {
+			start_key = Key::get_key_larger_than(insert_pool.back());
+			end_key = Key::get_key_larger_than(insert_pool.back());
+		    } else {
+			start_key = Key::get_key_between(insert_pool[index - 1], insert_pool[index]);
+			end_key = Key::get_key_between(insert_pool[index - 1], insert_pool[index]);
+		    }
+		}
+
+		if (end_key < start_key) {
+		  Key tmp = start_key;
+		  start_key = end_key;
+		  end_key = tmp;
+		}
+		fp << "S " << start_key << " " << end_key << std::endl;
+                _range_query_count++;
+                _total_operation_count++;
+		continue;
+	    }
             // selectivity is computed on the current size of the insert pool (insert_pool.size()) and NOT the total inserts to be made (insert_count)
 
             // the following code-block generates range selectivity as a random number 
 
             // for now we use the hardcoded range selectivity
-            long insert_pool_size = insert_pool.size();
             long entries_in_range_query = floor(range_query_selectivity * insert_pool_size); // computed on the current size of insert pool  
             long start_index = (long)(rand() % insert_pool_size);
             long end_index = -1;
@@ -577,8 +612,8 @@ void generate_workload() {
                     sort(insert_pool.begin(), insert_pool.end()); 
 	                //sorted = true; //if the number of range queries increases by a lot, this might be a problem in terms of execution speed!!!
                 }
-                Key start_key = insert_pool[start_index];
-                Key end_key = insert_pool[end_index];
+                start_key = insert_pool[start_index];
+                end_key = insert_pool[end_index];
 
                 // std::cout << "After sorting and before range deleting = ";
                 // for (int i = 0; i < insert_pool.size(); ++i)
@@ -654,7 +689,7 @@ void print_workload_parameters(int _insert_count, int _update_count, int _point_
 
 
 
-int get_choice(long insert_pool_size, long insert_count, long update_count, long point_delete_count, long range_delete_count, long point_query_count, long range_query_count, long _insert_count, long _update_count, long _point_delete_count, long _range_delete_count, long _point_query_count, long _range_query_count) {
+int get_choice(long insert_pool_size, long insert_count, long update_count, long point_delete_count, long range_delete_count, long point_query_count, long range_query_count, long _insert_count, long _update_count, long _point_delete_count, long _range_delete_count, long _point_query_count, long _range_query_count, double range_query_selectivity, double range_delete_selectivity) {
     long total_operation_count = (insert_count - _insert_count) + (update_count - _update_count) + (point_delete_count - _point_delete_count) + (range_delete_count - _range_delete_count) + (point_query_count - _point_query_count) + (range_query_count - _range_query_count);
     if(total_operation_count == 0) return 0;
     float insert_fraction = (float) (insert_count - _insert_count) / total_operation_count;
@@ -680,7 +715,7 @@ int get_choice(long insert_pool_size, long insert_count, long update_count, long
     // std::cout << "choice = " << choice << std::endl;
     switch (choice) {
         case 6: 
-            if (_range_query_count < range_query_count && insert_pool_size > 0 && _insert_count >= RQ_THRESHOLD * insert_count) 
+            if (_range_query_count < range_query_count && _insert_count >= RQ_THRESHOLD * insert_count) 
                 break;
             choice--;
         case 5: 
@@ -689,11 +724,13 @@ int get_choice(long insert_pool_size, long insert_count, long update_count, long
             // choice = (choice + 1)%choice_domain;
             choice--;
         case 4: 
-            if (_range_delete_count < range_delete_count && insert_pool_size > 0 && _insert_count >= RD_THRESHOLD * insert_count) 
+            if (_range_delete_count < range_delete_count && _insert_count >= RD_THRESHOLD * insert_count &&
+			    !(insert_pool_size == 1 && (_point_delete_count < point_delete_count || _update_count < update_count || _point_query_count < point_query_count || (_range_query_count < range_query_count && range_query_selectivity > 0.0) )))
                 break;
             choice--;
         case 3: 
-            if (_point_delete_count < point_delete_count && insert_pool_size > 0 && _insert_count >= PD_THRESHOLD * insert_count) 
+            if (_point_delete_count < point_delete_count && insert_pool_size > 0 && _insert_count >= PD_THRESHOLD * insert_count &&
+			    !(insert_pool_size == 1 && (_update_count < update_count || _point_query_count < point_query_count || (_range_query_count < range_query_count && range_query_selectivity > 0.0) ))) 
                 break;
             // choice = (choice + 1)%choice_domain;
             choice--;
@@ -874,9 +911,15 @@ int parse_arguments2(int argc, char *argv[]) {
   update_count = update_cmd ? args::get(update_cmd) : 0;
   point_delete_count = point_delete_cmd ? args::get(point_delete_cmd) : 0;
   range_delete_count = range_delete_cmd ? args::get(range_delete_cmd) : 0;
+  if (range_delete_count > 0) {
+        std::cerr << "\033[0;33m Warning: \033[0m The selectivity of range deletes depends on the temporary cardinality of populated entries (which is allowed to be zero). When the temporary cardinality is zero (i.e., no entries in the database), range deletes select no entries no matter what range delete selectivity is specified." << std::endl;
+  }
   range_delete_selectivity = range_delete_selectivity_cmd ? args::get(range_delete_selectivity_cmd) : 0;
   point_query_count = point_query_cmd ? args::get(point_query_cmd) : 0;
   range_query_count = range_query_cmd ? args::get(range_query_cmd) : 0;
+  if (range_query_count > 0) {
+        std::cerr << "\033[0;33m Warning: \033[0m The selectivity of range queries depends on the temporary cardinality of populated entries (which is allowed to be zero). When the temporary cardinality is zero (i.e., no entries in the database), range queries select no entries no matter what range query selectivity is specified." << std::endl;
+  }
   range_query_selectivity = range_query_selectivity_cmd ? args::get(range_query_selectivity_cmd) : 0;
   zero_result_point_delete_proportion = zero_result_point_delete_proportion_cmd ? args::get(zero_result_point_delete_proportion_cmd) : 0;
   zero_result_point_lookup_proportion = zero_result_point_lookup_proportion_cmd ? args::get(zero_result_point_lookup_proportion_cmd) : 0;
