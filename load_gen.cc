@@ -96,7 +96,7 @@ int get_choice(long, long, long, long, long, long, long, long, long, long, long,
 void generate_workload();
 void print_workload_parameters(int _insert_count, int _update_count, int _point_delete_count,int  _range_delete_count,int _effective_ingestion_count);
 std::string get_value(int _value_size);
-inline void showProgress(const uint32_t &n, const uint32_t &count);
+inline void showProgress(const uint32_t &total_ops, const uint32_t &current_ops);
 
 /*
 uint32_t get_key_as_uint32_t() { // random number generator still not foolproof
@@ -194,6 +194,7 @@ void generate_workload() {
     int choice_domain = 6;
     int flag = 0;
 
+    
     uint32_t num_char = (std::string(Key::key_alphanum)).size();
     uint32_t num_preserved_bits = 10;
     // generate unique key-value pairs in advance
@@ -263,6 +264,8 @@ void generate_workload() {
 
     bool update_renew_flag = false;
 
+    auto startTime = std::chrono::steady_clock::now();
+    auto lastUpdateTime = startTime;
     while (_total_operation_count < total_operation_count) {
         int choice = get_choice(insert_pool.size(), insert_count, update_count, point_delete_count, range_delete_count, point_query_count, range_query_count, _insert_count, _update_count, _point_delete_count, _range_delete_count, _point_query_count, _range_query_count, range_query_selectivity, range_delete_selectivity);
         // std::cout << "choice = " << choice << std::endl;
@@ -324,6 +327,7 @@ void generate_workload() {
 	    }
             long index = updateIndexGenerator->getNext();
 	    if (index >= insert_pool.size()) { // Generate an insert instead here
+		if (_insert_count >= global_insert_pool.size()) continue; 
 		Key key = global_insert_pool[index];
             	global_insert_pool[index] = global_insert_pool[_insert_count];
             	global_insert_pool[_insert_count] = key;
@@ -424,6 +428,7 @@ void generate_workload() {
 		fp << "R " << start_key << " " << end_key << std::endl;
                 _range_delete_count++;
                 _total_operation_count++;
+	        showProgress(total_operation_count, _total_operation_count);
 		continue;
 	    }
 	    
@@ -628,10 +633,12 @@ void generate_workload() {
             
         }
         
-        // Progress bar
-        //  if (total_operation_count > 100)
-        //      if(_total_operation_count % (total_operation_count/100) == 0) 
-        //          showProgress(total_operation_count, _total_operation_count);
+	auto currentTime = std::chrono::steady_clock::now();	
+	auto timeSinceLastUpdate = std::chrono::duration_cast<std::chrono::seconds>(currentTime - lastUpdateTime).count();
+	if (timeSinceLastUpdate >= 2 || total_operation_count == _total_operation_count) {
+		showProgress(total_operation_count, _total_operation_count);
+		lastUpdateTime = currentTime;
+	}
 
     }
 
@@ -790,24 +797,7 @@ int main(int argc, char *argv[]) {
     }
 
     
-    /* 
->>>>>>> 084785aa2e580ba6a054ed624ad772a6ba060ff9
-    if (log(insert_count*num_insert_key_prefix)/log(62) > lambda*entry_size - 2) {
-        std::cout << "\033[1;31m ERROR:\033[0m too small key size to support sufficient unique inserts" << std::endl;
-        exit(0);
-    }*/
-
     generate_workload();
-
-    /*
-    if (lambda == -1) { // this means, the size of the key is equal to the size of uint32_t, i.e., 4 bytes
-        generate_workload_with_key_as_uint32_t();
-    }
-    
-    else { // this means, we want to vary the key length. So we change the datatype of key from uint32_t to string
-        generate_workload_with_key_as_string();
-        
-    }*/
 
     // std::cout << "End of main() ..." << std::endl;
 
@@ -1012,25 +1002,39 @@ int parse_arguments2(int argc, char *argv[]) {
     return 0;
 }
 
-inline void showProgress(const uint32_t &workload_size, const uint32_t &counter) {
-    // std::cout << "flag = " << flag << std::endl;
+inline void showProgress(const uint32_t &total, const uint32_t &current) {
 
-    if (counter / (workload_size/100) >= 1) {
-        for (int i = 0; i<104; i++){
-        std::cout << "\b";
-        fflush(stdout);
-        }
-    }
-    for (int i = 0; i<counter / (workload_size/100); i++){
-        std::cout << "=" ;
-        fflush(stdout);
-    }
-    std::cout << std::setfill(' ') << std::setw(101 - counter / (workload_size/100));
-    std::cout << counter*100/workload_size << "%";
-        fflush(stdout);
 
-    if (counter == workload_size) {
-        std::cout << "\n";
-        return;
+    int barWidth = 50;
+    // Calculate progress percentage
+    float progress = std::min(current*1.0/ total, 1.0); 
+
+    // Determine how many blocks to display
+    int pos = static_cast<int>(barWidth * progress);
+
+    // Create the progress bar string
+    std::string bar;
+    bar.reserve(barWidth + 10); // Reserve space for efficiency
+
+    bar += "[";
+    for (int i = 0; i < barWidth; ++i) {
+	if (i < pos) {
+		bar += "=";
+	} else if (i == pos) {
+		bar += ">";
+	} else {
+		bar += " ";
+	}
     }
+    bar += "]";
+
+    // Calculate percentage
+    int percent = static_cast<int>(progress * 100.0);
+
+    // Output the progress bar
+    std::cout << "\r" << bar << " " << percent << "% (" << current << "/" << total << ")";
+    std::cout.flush(); // Ensure it's displayed immediately
+
+    // If complete, add a newline
+    if (current >= total) std::cout << std::endl;
 }
