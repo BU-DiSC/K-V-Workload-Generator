@@ -252,7 +252,7 @@ void generate_workload() {
         _maximum_unique_non_existing_point_query_count++;
     }
     tmp_insert_pool_set.clear();
-    //sort(global_non_existing_key_pool.begin(), global_non_existing_key_pool.end()); 
+    sort(global_non_existing_key_pool.begin(), global_non_existing_key_pool.end()); 
     double scaling_ratio = 1.0;
     if(STRING_KEY_ENABLED) scaling_ratio = num_char;
     nonExistingPointLookupIndexGenerator = new Generator(non_existing_point_lookup_dist, 0, global_non_existing_key_pool.size() - 1, non_existing_point_lookup_norm_mean_percentile*global_non_existing_key_pool.size(), non_existing_point_lookup_norm_stddev*global_non_existing_key_pool.size()/scaling_ratio, non_existing_point_lookup_beta_alpha, non_existing_point_lookup_beta_beta, non_existing_point_lookup_zipf_alpha, global_non_existing_key_pool.size());
