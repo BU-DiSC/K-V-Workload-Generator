@@ -27,7 +27,8 @@ inline int binary_search(double p, int low, int high, std::vector<double> & cdf)
 
 Generator::Generator(){}
 Generator::Generator(int dist, uint32_t lb, uint32_t ub, double norm_mean, double norm_stddev, double beta_alpha, double beta_beta, double zipf_alpha, int zipf_size, std::vector<int> _index_mapping): dist_(dist), lb_(lb), ub_(ub), norm_mean_(norm_mean), norm_stddev_(norm_stddev), beta_alpha_(beta_alpha), beta_beta_(beta_beta), zipf_alpha_(zipf_alpha), zipf_size_(zipf_size){
-	gen.seed(std::chrono::system_clock::now().time_since_epoch().count());
+	// gen.seed(std::chrono::system_clock::now().time_since_epoch().count());
+	gen.seed(422);
 	distribution0 = std::uniform_int_distribution<int>(lb_, ub_);
 	distribution1 = std::normal_distribution<double>(norm_mean_, norm_stddev_);
 	distribution2_x = std::gamma_distribution<double>(beta_alpha_, 1.0);

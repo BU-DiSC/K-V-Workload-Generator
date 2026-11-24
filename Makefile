@@ -14,8 +14,8 @@ endif
 
 all: load_gen
 
-load_gen: load_gen.cc Generator.cc Key.cc
-	$(CXX) $(CXXFLAGS) -o $@ load_gen.cc Generator.cc Key.cc -O2 -std=c++11 $(PLATFORM_LDFLAGS) $(PLATFORM_CXXFLAGS) $(EXEC_LDFLAGS)
+load_gen: load_gen.cc Generator.cc Key.cc Ttl.cc
+	$(CXX) $(CXXFLAGS) -o $@ load_gen.cc Generator.cc Key.cc Ttl.cc -O2 -std=c++11 $(PLATFORM_LDFLAGS) $(PLATFORM_CXXFLAGS) $(EXEC_LDFLAGS)
 
 clean:
 	rm -f load_gen

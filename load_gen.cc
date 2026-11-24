@@ -18,6 +18,7 @@
 #include "args.hxx"
 #include "Generator.h"
 #include "Key.h"
+#include "Ttl.h"
 
 #define U_THRESHOLD 0.1 // U_THRESHOLD*insert_count number of inserts must be made before Updates may take place (applicable when an empty database is being populated)
 #define PD_THRESHOLD 0.1 // PD_THRESHOLD*insert_count number of inserts must be made before Point Deletes may take place (applicable when an empty database is being populated)
@@ -26,6 +27,8 @@
 #define RQ_THRESHOLD 0.1 // RQ_THRESHOLD*insert_count number of inserts must be made before Range Queries may take place (applicable when an empty database is being populated)
 #define STRING_KEY_ENABLED true
 #define FILENAME "workload.txt"
+#define SQL_FILENAME "sql_workload.txt"
+
 
 // using namespace std;
 
@@ -34,6 +37,7 @@ std::string file_path = "";
 long insert_count = 0;
 long update_count = 0;
 long point_delete_count = 0;
+long point_delete_ttl_count = 0;
 long range_delete_count = 0;
 float range_delete_selectivity = 0;
 long point_query_count = 0;
@@ -92,9 +96,10 @@ float existing_point_lookup_zipf_alpha = 1.0;
 Generator* existingPointLookupIndexGenerator = nullptr;
 
 int parse_arguments2(int argc, char *argv[]);
-int get_choice(long, long, long, long, long, long, long, long, long, long, long, long, long, double, double);
+int get_choice(long, long, long, long, long, long, long, long, long, long, long, long, long, long, long, double, double);
 void generate_workload();
-void print_workload_parameters(int _insert_count, int _update_count, int _point_delete_count,int  _range_delete_count,int _effective_ingestion_count);
+void generate_sql_workload();
+void print_workload_parameters(int _insert_count, int _update_count, int _point_delete_count, int _point_delete_ttl_count, int  _range_delete_count,int _effective_ingestion_count);
 std::string get_value(int _value_size);
 inline void showProgress(const uint32_t &total_ops, const uint32_t &current_ops);
 
@@ -135,7 +140,7 @@ std::vector<std::string> StringSplit(const std::string& arg, char delim) {
 void generate_workload() {
 
     //std::cout << "Generating workload ..." << std::endl;
-    long total_operation_count = insert_count + update_count + point_delete_count + range_delete_count + point_query_count + range_query_count;
+    long total_operation_count = insert_count + update_count + point_delete_count + point_delete_ttl_count + range_delete_count + point_query_count + range_query_count;
     std::cout << "Total operation count = " << total_operation_count << std::endl << std::flush;
     std::set<Key> tmp_insert_pool_set; 
     std::vector<Key> tmp_insert_pool_vec; 
@@ -171,6 +176,10 @@ void generate_workload() {
         std::cout << "\033[1;31m ERROR:\033[0m insert_count < point_delete_count + range_delete_count * range_delete_selectivity * insert_count" << std::endl;
         exit(0);
     }
+    if (insert_count + insert_pool.size() < point_delete_ttl_count + range_delete_count * range_delete_selectivity * insert_count) {
+        std::cout << "\033[1;31m ERROR:\033[0m insert_count < point_delete_ttl_count + range_delete_count * range_delete_selectivity * insert_count" << std::endl;
+        exit(0);
+    }
     std::ofstream fp;
     if(out_filename.compare("") == 0){
         fp.open(file_path+FILENAME);
@@ -184,6 +193,7 @@ void generate_workload() {
     long _insert_count = 0;
     long _update_count = 0;
     long _point_delete_count = 0;
+    long _point_delete_ttl_count = 0;
     long _range_delete_count = 0;
     long _point_query_count = 0;
     long _non_existing_point_query_count = 0;
@@ -191,7 +201,7 @@ void generate_workload() {
     long _range_query_count = 0;
     long _total_operation_count = 0;
     long _effective_ingestion_count = 0; // insert = +1 ; update = 0 ; point_delete = -1 ; range_delete = -x
-    int choice_domain = 6;
+    int choice_domain = 7;
     int flag = 0;
 
     
@@ -267,7 +277,7 @@ void generate_workload() {
     auto startTime = std::chrono::steady_clock::now();
     auto lastUpdateTime = startTime;
     while (_total_operation_count < total_operation_count) {
-        int choice = get_choice(insert_pool.size(), insert_count, update_count, point_delete_count, range_delete_count, point_query_count, range_query_count, _insert_count, _update_count, _point_delete_count, _range_delete_count, _point_query_count, _range_query_count, range_query_selectivity, range_delete_selectivity);
+        int choice = get_choice(insert_pool.size(), insert_count, update_count, point_delete_count, point_delete_ttl_count, range_delete_count, point_query_count, range_query_count, _insert_count, _update_count, _point_delete_count, _point_delete_ttl_count,  _range_delete_count, _point_query_count, _range_query_count, range_query_selectivity, range_delete_selectivity);
         // std::cout << "choice = " << choice << std::endl;
 
         if (choice == 0)
@@ -382,6 +392,37 @@ void generate_workload() {
                 // std::cout << "D " << key << std::endl;
                 fp << "D " << key << " " << std::endl;
                 _point_delete_count++;
+                _effective_ingestion_count--;
+                _total_operation_count++;
+            }
+            
+        }
+        else if (choice == 7) { // POINT DELETE
+            // the following if block ensures that all updates are completed before a database is emptied ( in cases where insert_count == point_delete_ttl_count)
+            if (insert_count == point_delete_ttl_count && _insert_count == insert_count && _point_delete_ttl_count == point_delete_ttl_count - 1 && _update_count < update_count ) {
+                std::cout << "pausing delete to facilitate all remaining updates ... " << std::endl;
+            }
+            else {
+                // std::cout << "_insert_count " << _insert_count << " ; _update_count " << _update_count << std::endl;
+                long insert_pool_size = insert_pool.size();
+                long index = (long)(rand() % insert_pool_size);
+                Key key = insert_pool[index];
+                // std::cout << key << std::endl;
+                global_insert_pool_set.erase(key);
+                insert_pool.erase(insert_pool.begin() + index);
+	        std::vector<int> index_mapping;
+                if(updateIndexGenerator != nullptr && update_count > 0 && !update_renew_flag){
+		    update_renew_flag = true;
+                }
+                if(existingPointLookupIndexGenerator != nullptr && point_query_count > 0){
+		    index_mapping = existingPointLookupIndexGenerator->index_mapping;
+
+                    delete existingPointLookupIndexGenerator;
+                    existingPointLookupIndexGenerator = new Generator(existing_point_lookup_dist, 0, insert_pool.size() - 1, existing_point_lookup_norm_mean_percentile*insert_pool.size(), existing_point_lookup_norm_stddev*insert_pool.size()/scaling_ratio, existing_point_lookup_beta_alpha, existing_point_lookup_beta_beta, existing_point_lookup_zipf_alpha, insert_pool.size(), index_mapping);
+                }
+                int ttl = ttl_generator(point_delete_ttl_count);
+                fp << "T " << key << " " << ttl << std::endl;
+                _point_delete_ttl_count++;
                 _effective_ingestion_count--;
                 _total_operation_count++;
             }
@@ -642,10 +683,10 @@ void generate_workload() {
 
     }
 
-    print_workload_parameters(_insert_count, _update_count, _point_delete_count, _range_delete_count, _effective_ingestion_count);
+    print_workload_parameters(_insert_count, _update_count, _point_delete_count, _point_delete_ttl_count, _range_delete_count, _effective_ingestion_count);
 }
 
-void print_workload_parameters(int _insert_count, int _update_count, int _point_delete_count,int  _range_delete_count,int _effective_ingestion_count){
+void print_workload_parameters(int _insert_count, int _update_count, int _point_delete_count, int _point_delete_ttl_count, int  _range_delete_count,int _effective_ingestion_count){
     std::cout <<"Workload_parameters: "
     << "entry_size = "<< entry_size << ", " 
     << "key_size = "<< key_size << ", " 
@@ -653,6 +694,7 @@ void print_workload_parameters(int _insert_count, int _update_count, int _point_
     << "insert_count = "<< _insert_count << ", " 
     << "update_count = " << _update_count << ", " 
     << "point_delete_count = " << _point_delete_count << ", " 
+    << "point_delete_ttl_count = " << _point_delete_ttl_count << ", " 
     << "range_delete_count = "<< _range_delete_count << ", " 
     << "range_delete_selectivity = "<< range_delete_selectivity << ", "
     << "zero_result_point_delete_proportion = "<< zero_result_point_delete_proportion << ", " 
@@ -696,12 +738,13 @@ void print_workload_parameters(int _insert_count, int _update_count, int _point_
 
 
 
-int get_choice(long insert_pool_size, long insert_count, long update_count, long point_delete_count, long range_delete_count, long point_query_count, long range_query_count, long _insert_count, long _update_count, long _point_delete_count, long _range_delete_count, long _point_query_count, long _range_query_count, double range_query_selectivity, double range_delete_selectivity) {
-    long total_operation_count = (insert_count - _insert_count) + (update_count - _update_count) + (point_delete_count - _point_delete_count) + (range_delete_count - _range_delete_count) + (point_query_count - _point_query_count) + (range_query_count - _range_query_count);
+int get_choice(long insert_pool_size, long insert_count, long update_count, long point_delete_count, long point_delete_ttl_count, long range_delete_count, long point_query_count, long range_query_count, long _insert_count, long _update_count, long _point_delete_count, long _point_delete_ttl_count, long _range_delete_count, long _point_query_count, long _range_query_count, double range_query_selectivity, double range_delete_selectivity) {
+    long total_operation_count = (insert_count - _insert_count) + (update_count - _update_count) + (point_delete_count - _point_delete_count) + (point_delete_ttl_count - _point_delete_ttl_count) + (range_delete_count - _range_delete_count) + (point_query_count - _point_query_count) + (range_query_count - _range_query_count);
     if(total_operation_count == 0) return 0;
     float insert_fraction = (float) (insert_count - _insert_count) / total_operation_count;
     float update_fraction = (float) (update_count - _update_count) / total_operation_count;
     float point_delete_fraction = (float) (point_delete_count - _point_delete_count) / total_operation_count;
+    float point_delete_ttl_fraction = (float) (point_delete_ttl_count - _point_delete_ttl_count) / total_operation_count;
     float range_delete_fraction = (float) (range_delete_count - _range_delete_count) / total_operation_count;
     float point_query_fraction = (float) (point_query_count - _point_query_count) / total_operation_count;
     float range_query_fraction = (float) (range_query_count - _range_query_count) / total_operation_count;
@@ -715,12 +758,19 @@ int get_choice(long insert_pool_size, long insert_count, long update_count, long
     if (rand_float < insert_fraction) choice = 1;
     else if (rand_float < insert_fraction + update_fraction) choice = 2;
     else if (rand_float < insert_fraction + update_fraction + point_delete_fraction) choice = 3;
-    else if (rand_float < insert_fraction + update_fraction + point_delete_fraction + range_delete_fraction) choice = 4;
-    else if (rand_float < insert_fraction + update_fraction + point_delete_fraction + range_delete_fraction + point_query_fraction) choice = 5;
-    else if (rand_float <= insert_fraction + update_fraction + point_delete_fraction + range_delete_fraction + point_query_fraction + range_query_fraction) choice = 6;
+    else if (rand_float < insert_fraction + update_fraction + point_delete_fraction + point_delete_ttl_fraction) choice = 7;
+    else if (rand_float < insert_fraction + update_fraction + point_delete_fraction + point_delete_ttl_fraction + range_delete_fraction) choice = 4;
+    else if (rand_float < insert_fraction + update_fraction + point_delete_fraction + point_delete_ttl_fraction + range_delete_fraction + point_query_fraction) choice = 5;
+    else if (rand_float <= insert_fraction + update_fraction + point_delete_fraction  + point_delete_ttl_fraction+ range_delete_fraction + point_query_fraction + range_query_fraction) choice = 6;
 
     // std::cout << "choice = " << choice << std::endl;
     switch (choice) {
+        case 7: 
+            if (_point_delete_ttl_count < point_delete_ttl_count && insert_pool_size > 0 && _insert_count >= PD_THRESHOLD * insert_count &&
+			    !(insert_pool_size == 1 && (_update_count < update_count || _point_query_count < point_query_count || (_range_query_count < range_query_count && range_query_selectivity > 0.0) ))) 
+                break;
+            // choice = (choice + 1)%choice_domain;
+            choice--;
         case 6: 
             if (_range_query_count < range_query_count && _insert_count >= RQ_THRESHOLD * insert_count) 
                 break;
@@ -798,6 +848,7 @@ int main(int argc, char *argv[]) {
 
     
     generate_workload();
+    generate_sql_workload();
 
     // std::cout << "End of main() ..." << std::endl;
 
@@ -832,6 +883,7 @@ int parse_arguments2(int argc, char *argv[]) {
   args::ValueFlag<long> insert_cmd(group1, "I", "Number of inserts [def: 0]", {'I', "insert"});
   args::ValueFlag<long> update_cmd(group1, "U", "Number of updates [def: 0]", {'U', "update"});
   args::ValueFlag<long> point_delete_cmd(group1, "D", "Number of point deletes [def: 0]", {'D', "point_delete"});
+  args::ValueFlag<long> point_delete_ttl_cmd(group1, "T", "Number of point deletes w/ TTL [def: 0]", {'T', "point_delete_ttl"});
   args::ValueFlag<long> range_delete_cmd(group1, "R", "Number of range deletes [def: 0]", {'R', "range_delete"});
   args::ValueFlag<float> range_delete_selectivity_cmd(group1, "y", "Range delete selectivity [def: 0]", {'y', "range_delete_selectivity"});
   args::ValueFlag<long> point_query_cmd(group1, "Q", "Number of point queries [def: 0]", {'Q', "point_query"});
@@ -900,6 +952,7 @@ int parse_arguments2(int argc, char *argv[]) {
   insert_count = insert_cmd ? args::get(insert_cmd) : 0;
   update_count = update_cmd ? args::get(update_cmd) : 0;
   point_delete_count = point_delete_cmd ? args::get(point_delete_cmd) : 0;
+  point_delete_ttl_count = point_delete_ttl_cmd ? args::get(point_delete_ttl_cmd) : 0;
   range_delete_count = range_delete_cmd ? args::get(range_delete_cmd) : 0;
   if (range_delete_count > 0) {
         std::cerr << "\033[0;33m Warning: \033[0m The selectivity of range deletes depends on the temporary cardinality of populated entries (which is allowed to be zero). When the temporary cardinality is zero (i.e., no entries in the database), range deletes select no entries no matter what range delete selectivity is specified." << std::endl;
@@ -954,7 +1007,7 @@ int parse_arguments2(int argc, char *argv[]) {
 
 
   if (insert_count == 0 && !load_from_existing_workload) {
-    if (update_count > 0 || existing_point_query_count > 0 || point_delete_count > 0 || range_delete_count > 0) {
+    if (update_count > 0 || existing_point_query_count > 0 || point_delete_count > 0 || point_delete_ttl_count > 0 || range_delete_count > 0) {
 	std::cerr << "\033[0;31m ERROR:\033[0m Insert cannot be 0 for requested operations" << std::endl;
 	return 1;
     }
@@ -1037,4 +1090,39 @@ inline void showProgress(const uint32_t &total, const uint32_t &current) {
 
     // If complete, add a newline
     if (current >= total) std::cout << std::endl;
+}
+
+void generate_sql_workload(void) {
+    FILE *in = fopen(FILENAME, "rb");
+    FILE *out = fopen("sql_workload.txt", "w");
+
+    if (!in || !out) {perror("fopen"); return;};
+
+    char line[1000];
+
+    while (fgets(line, sizeof line, in)) {
+        char *op  = strtok(line, " \t\r\n");
+        char *key = strtok(NULL, " \t\r\n");
+        char *val = strtok(NULL, " \t\r\n");
+        if (!op) continue; 
+
+    // inserts
+    if (strcmp(op, "I") == 0 && val)
+            fprintf(out, "INSERT INTO kv (key, value) VALUES ('%s', '%s');\n", key, val);
+    // deletes
+    else if (strcmp(op, "D") == 0 && key)
+            fprintf(out, "DELETE FROM kv WHERE key = '%s';\n", key);
+    // ttl deletes
+    else if (strcmp(op, "T") == 0 && val)
+            fprintf(out, "DELETE FROM kv WHERE key = '%s' WITH dpt = %s;\n", key, val);
+    // updates
+    else if (strcmp(op, "U") == 0 && val)
+            fprintf(out, "UPDATE kv SET value = '%s' WHERE key = '%s';\n", val, key);
+        
+        
+    }
+    fclose(in);
+    fclose(out);
+    return;
+
 }
